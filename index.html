@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON FLOW | Final Edition</title>
+    <style>
+        :root {
+            --bg: #000000;
+            --bar-bg: #080808;
+            --card-bg: #111111;
+            --cyan: #00E5FF;
+            --magenta: #FF007A;
+            --yellow: #FFD600;
+            --green: #00FF85;
+            --text: #ffffff;
+            --border: #222222;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', 'Segoe UI', sans-serif; }
+        body { background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+        /* --- PERSISTENT TOP BAR --- */
+        header {
+            position: fixed; top: 0; width: 100%; height: 90px;
+            background: var(--bar-bg); border-bottom: 3px solid var(--yellow);
+            display: flex; justify-content: space-around; align-items: center;
+            z-index: 2000; padding: 0 20px;
+        }
+
+        .status-box { text-align: center; flex: 1; }
+        .status-box small { color: var(--yellow); font-size: 0.7rem; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
+        .status-box p { font-weight: 900; font-size: 1.1rem; margin-top: 2px; }
+        #live-clock { color: var(--cyan); font-size: 1.8rem; font-weight: 900; }
+
+        /* --- PROGRESS BAR --- */
+        .progress-wrapper { position: fixed; top: 90px; left: 0; width: 100%; height: 5px; background: #111; z-index: 1999; }
+        #progress-fill { height: 100%; width: 0%; background: var(--green); transition: width 0.4s ease; }
+
+        /* --- LAYOUT --- */
+        .main-container {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            margin-top: 95px;
+            min-height: calc(100vh - 95px);
+        }
+
+        /* --- LEFT: VERTICAL TIMELINE --- */
+        .timeline-area {
+            padding: 20px 20px 20px 80px;
+            position: relative;
+            background: #030303;
+            border-right: 2px solid var(--border);
+        }
+
+        .hour-row {
+            height: 100px; /* 1 hour = 100px for clarity */
+            border-bottom: 1px solid #111;
+            position: relative;
+        }
+
+        .hour-label {
+            position: absolute; left: -70px; top: -10px;
+            color: #444; font-size: 0.8rem; font-weight: 800;
+        }
+
+        #now-line {
+            position: absolute; left: 0; right: 0; height: 3px;
+            background: var(--cyan); z-index: 100; pointer-events: none;
+        }
+
+        .task-node {
+            position: absolute; left: 10px; right: 10px;
+            border-radius: 8px; padding: 12px; font-weight: 800;
+            border: 2px solid; background: rgba(0,0,0,0.7);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        /* --- RIGHT: UTILITY COLUMN --- */
+        .utility-area {
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .widget {
+            background: var(--card-bg);
+            border: 2px solid var(--yellow);
+            border-radius: 20px;
+            padding: 20px;
+        }
+
+        .widget h2 { font-size: 0.8rem; color: var(--yellow); text-transform: uppercase; margin-bottom: 15px; }
+
+        /* --- WIDGET CONTENT --- */
+        #timer-display { font-size: 5rem; font-weight: 900; color: var(--green); text-align: center; }
+        
+        textarea {
+            width: 100%; height: 300px; background: #000; border: 1px solid #222;
+            color: white; padding: 15px; border-radius: 12px; resize: none; outline: none; font-size: 1rem;
+        }
+
+        .input-box {
+            width: 100%; padding: 12px; background: #000; border: 1px solid var(--border);
+            color: white; border-radius: 8px; margin-bottom: 10px;
+        }
+
+        .todo-item { 
+            display: flex; align-items: center; gap: 10px; padding: 10px; 
+            border-bottom: 1px solid #1a1a1a; transition: 0.3s;
+        }
+        .todo-item:hover { background: #161616; }
+
+        .btn {
+            background: var(--magenta); border: none; color: white;
+            padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 800;
+        }
+
+        #fab {
+            position: fixed; bottom: 30px; left: 30px; 
+            width: 65px; height: 65px; border-radius: 50%;
+            background: var(--magenta); color: white; border: none;
+            font-size: 35px; cursor: pointer; z-index: 2500;
+        }
+
+        /* --- ZEN MODE --- */
+        body.zen-active .main-container, body.zen-active #fab, body.zen-active .progress-wrapper { display: none; }
+        body.zen-active header { height: 100vh; border: none; flex-direction: column; justify-content: center; gap: 50px; }
+        body.zen-active #live-clock { font-size: 12rem; }
+
+        /* --- MODAL --- */
+        #modal {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+            display: none; align-items: center; justify-content: center; z-index: 3000;
+        }
+
+        @media (max-width: 900px) {
+            .main-container { grid-template-columns: 1fr; }
+            header { height: 120px; flex-wrap: wrap; }
+            .progress-wrapper { top: 120px; }
+            .main-container { margin-top: 130px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="status-box">
+        <small>Current Task</small>
+        <p id="head-current">RELAXING</p>
+    </div>
+    <div class="status-box">
+        <div id="live-clock">00:00:00</div>
+        <div id="live-date" style="font-size: 0.7rem; color: #555;">FRIDAY, MARCH 13</div>
+    </div>
+    <div class="status-box">
+        <small>Upcoming</small>
+        <p id="head-next">NONE</p>
+    </div>
+    <div class="status-box" style="flex: 0.3;">
+        <button class="btn" style="background: #222; padding: 8px 12px; font-size: 0.7rem;" onclick="toggleZen()">ZEN</button>
+    </div>
+</header>
+
+<div class="progress-wrapper">
+    <div id="progress-fill"></div>
+</div>
+
+<div class="main-container">
+    <div class="timeline-area" id="timeline">
+        <div id="now-line"></div>
+        </div>
+
+    <div class="utility-area">
+        <div class="widget">
+            <h2>Pomodoro</h2>
+            <div id="timer-display">25:00</div>
+            <div style="display:flex; gap:10px; margin-top: 15px;">
+                <button class="btn" onclick="startTimer()" style="flex:1; background: var(--green); color: black;">Start</button>
+                <button class="btn" onclick="resetTimer()" style="flex:1; background: #222;">Reset</button>
+            </div>
+            <div style="margin-top: 20px; display: flex; gap: 15px;">
+                <a href="https://youtube.com" target="_blank" style="color: var(--cyan); text-decoration: none; font-size: 0.8rem; font-weight: bold;">YOUTUBE ↗</a>
+                <a href="https://spotify.com" target="_blank" style="color: var(--magenta); text-decoration: none; font-size: 0.8rem; font-weight: bold;">SPOTIFY ↗</a>
+            </div>
+        </div>
+
+        <div class="widget">
+            <h2>To-Do List</h2>
+            <input type="text" class="input-box" id="todo-in" placeholder="+ Add a task and hit Enter" onkeypress="addTodo(event)">
+            <div id="todo-list"></div>
+        </div>
+
+        <div class="widget">
+            <h2>Daily Notes</h2>
+            <textarea id="notes-in" placeholder="Brain dump here..." oninput="saveNotes()"></textarea>
+        </div>
+    </div>
+</div>
+
+<button id="fab" onclick="document.getElementById('modal').style.display='flex'">+</button>
+
+<div id="modal">
+    <div class="widget" style="width: 350px;">
+        <h2 style="color: var(--cyan)">Schedule Mission</h2>
+        <input type="text" id="t-name" class="input-box" placeholder="Task Name">
+        <div style="display:flex; gap:10px;">
+            <input type="time" id="t-start" class="input-box">
+            <input type="time" id="t-end" class="input-box">
+        </div>
+        <select id="t-color" class="input-box">
+            <option value="#00E5FF">Cyan</option>
+            <option value="#FF007A">Magenta</option>
+            <option value="#FFD600">Yellow</option>
+            <option value="#00FF85">Green</option>
+        </select>
+        <button class="btn" onclick="saveTask()" style="width:100%; background: var(--cyan); color: black;">Add to Timeline</button>
+        <button class="btn" onclick="document.getElementById('modal').style.display='none'" style="width:100%; margin-top:10px; background: transparent;">Cancel</button>
+    </div>
+</div>
+
+<script>
+    let tasks = JSON.parse(localStorage.getItem('flow-tasks-vfinal')) || [];
+    let todos = JSON.parse(localStorage.getItem('flow-todos-vfinal')) || [];
+    let timer;
+    let seconds = 1500;
+
+    function init() {
+        const tl = document.getElementById('timeline');
+        for(let i=0; i<24; i++) {
+            const row = document.createElement('div');
+            row.className = 'hour-row';
+            row.innerHTML = `<span class="hour-label">${i}:00</span>`;
+            tl.appendChild(row);
+        }
+        
+        renderTasks();
+        renderTodos();
+        updateRealtime();
+        setInterval(updateRealtime, 1000);
+        
+        document.getElementById('notes-in').value = localStorage.getItem('flow-notes-vfinal') || "";
+        
+        // Auto-scroll to current hour
+        const now = new Date();
+        window.scrollTo(0, (now.getHours() * 100));
+    }
+
+    function updateRealtime() {
+        const now = new Date();
+        const h = now.getHours();
+        const m = now.getMinutes();
+        const s = now.getSeconds();
+
+        document.getElementById('live-clock').innerText = 
+            `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        document.getElementById('live-date').innerText = now.toDateString().toUpperCase();
+
+        const totalMins = (h * 60) + m;
+        // 1.666 is the scale factor (100px per hour / 60 mins)
+        document.getElementById('now-line').style.top = `${totalMins * 1.666}px`;
+
+        // Update Header
+        let current = tasks.find(t => totalMins >= timeToMins(t.start) && totalMins < timeToMins(t.end));
+        let next = tasks.filter(t => timeToMins(t.start) > totalMins).sort((a,b) => timeToMins(a.start) - timeToMins(b.start))[0];
+        
+        document.getElementById('head-current').innerText = current ? current.name.toUpperCase() : "RELAXING";
+        document.getElementById('head-next').innerText = next ? `${next.name.toUpperCase()} (${next.start})` : "NONE";
+
+        // Browser Notification at task start
+        if(s === 0) {
+            tasks.forEach(t => {
+                if(timeToMins(t.start) === totalMins) {
+                    new Notification("TASK STARTING: " + t.name);
+                }
+            });
+        }
+    }
+
+    function timeToMins(t) {
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + m;
+    }
+
+    function renderTasks() {
+        document.querySelectorAll('.task-node').forEach(e => e.remove());
+        tasks.forEach(task => {
+            const s = timeToMins(task.start);
+            const d = timeToMins(task.end) - s;
+            if (d <= 0) return;
+
+            const div = document.createElement('div');
+            div.className = 'task-node';
+            div.style.top = `${s * 1.666}px`;
+            div.style.height = `${d * 1.666}px`;
+            div.style.borderColor = task.color;
+            div.style.color = task.color;
+            div.innerHTML = `<span>${task.name}</span> <span style="cursor:pointer" onclick="deleteTask(${task.id})">×</span>`;
+            document.getElementById('timeline').appendChild(div);
+        });
+    }
+
+    function saveTask() {
+        const t = {
+            id: Date.now(),
+            name: document.getElementById('t-name').value,
+            start: document.getElementById('t-start').value,
+            end: document.getElementById('t-end').value,
+            color: document.getElementById('t-color').value
+        };
+        if(!t.name || !t.start || !t.end) return;
+        tasks.push(t);
+        localStorage.setItem('flow-tasks-vfinal', JSON.stringify(tasks));
+        renderTasks();
+        document.getElementById('modal').style.display='none';
+    }
+
+    function deleteTask(id) {
+        tasks = tasks.filter(t => t.id !== id);
+        localStorage.setItem('flow-tasks-vfinal', JSON.stringify(tasks));
+        renderTasks();
+    }
+
+    // TO-DO LOGIC
+    function addTodo(e) {
+        if(e.key === 'Enter' && e.target.value) {
+            todos.push({ id: Date.now(), text: e.target.value, done: false });
+            e.target.value = "";
+            updateTodoStorage();
+        }
+    }
+
+    function toggleTodo(id) {
+        const todo = todos.find(t => t.id === id);
+        todo.done = !todo.done;
+        updateTodoStorage();
+    }
+
+    function updateTodoStorage() {
+        localStorage.setItem('flow-todos-vfinal', JSON.stringify(todos));
+        renderTodos();
+    }
+
+    function renderTodos() {
+        const list = document.getElementById('todo-list');
+        list.innerHTML = "";
+        todos.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'todo-item';
+            div.innerHTML = `<input type="checkbox" ${t.done ? 'checked' : ''} onclick="toggleTodo(${t.id})"> 
+                             <span style="${t.done ? 'text-decoration: line-through; opacity: 0.5' : ''}">${t.text}</span>`;
+            list.appendChild(div);
+        });
+        
+        // Update Progress Bar
+        const completed = todos.filter(t => t.done).length;
+        const percent = todos.length === 0 ? 0 : (completed / todos.length) * 100;
+        document.getElementById('progress-fill').style.width = percent + "%";
+    }
+
+    // POMODORO
+    function startTimer() {
+        clearInterval(timer);
+        timer = setInterval(() => {
+            seconds--;
+            let mins = Math.floor(seconds/60);
+            let secs = seconds % 60;
+            document.getElementById('timer-display').innerText = `${mins}:${String(secs).padStart(2,'0')}`;
+            if(seconds <= 0) {
+                clearInterval(timer);
+                new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play();
+            }
+        }, 1000);
+    }
+
+    function resetTimer() { 
+        clearInterval(timer); 
+        seconds = 1500; 
+        document.getElementById('timer-display').innerText = "25:00"; 
+    }
+
+    function toggleZen() { document.body.classList.toggle('zen-active'); }
+    function saveNotes() { localStorage.setItem('flow-notes-vfinal', document.getElementById('notes-in').value); }
+
+    if (Notification.permission !== "granted") Notification.requestPermission();
+    init();
+</script>
+</body>
+</html>
